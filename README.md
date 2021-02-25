@@ -97,3 +97,4 @@ Documentation
 - BPF System call: [bpf(2)](https://www.man7.org/linux/man-pages/man2/bpf.2.html)
 - sk_lookup sample [tools/testing/selftests/bpf/prog_tests/sk_lookup.c](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/testing/selftests/bpf/prog_tests/sk_lookup.c?h=v5.11) for the C part and [tools/testing/selftests/bpf/progs/test_sk_lookup.c](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/testing/selftests/bpf/progs/test_sk_lookup.c?h=v5.11) for the eBPF part.
 - [libbpf](https://github.com/libbpf/libbpf) with [libbpf-bootstrap](https://github.com/libbpf/libbpf-bootstrap) and [blog post](https://nakryiko.com/posts/libbpf-bootstrap/)
+- [BPF kernel development](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/bpf/bpf_devel_QA.rst)
