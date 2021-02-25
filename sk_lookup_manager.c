@@ -2,14 +2,18 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 
 #include <linux/bpf.h>
 
-#include "bpf_prog.skel.h"
+#include <bpf/libbpf.h>
 
+#include "sk_lookup_manager.skel.h"
+
+#if 0
 static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 {
 	struct bpf_link *link;
@@ -33,15 +37,69 @@ static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 	close(net_fd);
 	return link;
 }
+#endif
 
-int main(){
-	struct bpf_prog *prog = bpf_prog__open_and_load();
-	if (!prog) {
-		fprintf(stderr, "failed to open and load skeleton\n");
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
+{
+	return vfprintf(stderr, format, args);
+}
+
+static void bump_memlock_rlimit(void)
+{
+	struct rlimit rlim_new = {
+		.rlim_cur	= RLIM_INFINITY,
+		.rlim_max	= RLIM_INFINITY,
+	};
+
+	if (setrlimit(RLIMIT_MEMLOCK, &rlim_new)) {
+		fprintf(stderr, "Failed to increase RLIMIT_MEMLOCK limit!\n");
+		exit(1);
+	}
+}
+
+int main(int argc, char **argv){
+	int err;
+
+	/* Set up libbpf errors and debug info callback */
+	libbpf_set_print(libbpf_print_fn);
+
+	/* Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything */
+	bump_memlock_rlimit();
+
+	struct sk_lookup_manager_bpf *skel = sk_lookup_manager_bpf__open();
+	if (!skel) {
+		fprintf(stderr, "Failed to open skeleton\n");
 		return 1;
 	}
 
-	attach_lookup_prog(prog->progs.hello_world);
-	bpf_prog__destroy(prog);
-	return 1;
+	/* ensure BPF program only handles write() syscalls from our process */
+	skel->bss->my_pid = getpid();
+
+	/* Load & verify BPF programs */
+	err = sk_lookup_manager_bpf__load(skel);
+	if (err) {
+		fprintf(stderr, "Failed to load and verify BPF skeleton\n");
+		goto cleanup;
+	}
+
+	/* Attach tracepoint handler */
+	err = sk_lookup_manager_bpf__attach(skel);
+	if (err) {
+		fprintf(stderr, "Failed to attach BPF skeleton\n");
+		goto cleanup;
+	}
+
+	//attach_lookup_prog(skel->progs.hello_world);
+
+	printf("Successfully started!\n");
+
+	for (;;) {
+		/* trigger our BPF program */
+		fprintf(stderr, ".");
+		sleep(1);
+	}
+
+cleanup:
+	sk_lookup_manager_bpf__destroy(skel);
+	return -err;
 }
