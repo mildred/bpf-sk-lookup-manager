@@ -13,7 +13,6 @@
 
 #include "sk_lookup_manager.skel.h"
 
-#if 0
 static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 {
 	struct bpf_link *link;
@@ -37,7 +36,6 @@ static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 	close(net_fd);
 	return link;
 }
-#endif
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
 {
@@ -72,9 +70,6 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	/* ensure BPF program only handles write() syscalls from our process */
-	skel->bss->my_pid = getpid();
-
 	/* Load & verify BPF programs */
 	err = sk_lookup_manager_bpf__load(skel);
 	if (err) {
@@ -82,14 +77,12 @@ int main(int argc, char **argv){
 		goto cleanup;
 	}
 
-	/* Attach tracepoint handler */
-	err = sk_lookup_manager_bpf__attach(skel);
-	if (err) {
+	/* Attach program */
+	struct bpf_link *link = attach_lookup_prog(skel->progs.hello_world);
+	if (!link) {
 		fprintf(stderr, "Failed to attach BPF skeleton\n");
 		goto cleanup;
 	}
-
-	//attach_lookup_prog(skel->progs.hello_world);
 
 	printf("Successfully started!\n");
 
