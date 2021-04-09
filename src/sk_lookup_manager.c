@@ -13,6 +13,8 @@
 
 #include "sk_lookup_manager.skel.h"
 
+#include "../utils/mappings.h"
+
 static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 {
 	struct bpf_link *link;
@@ -56,7 +58,33 @@ static void bump_memlock_rlimit(void)
 }
 
 int main(int argc, char **argv){
-	int err;
+	int err = 0;
+	mapping_t *mapping = 0;
+
+	for(int argi = 1; argi < argc; argi++) {
+		if(!strcmp("-t", argv[argi]) && argi + 1 < argc) {
+			err = mapping_parse_add_tcp(&mapping, AF_UNSPEC, argv[argi+1]);
+			if(err){
+				fprintf(stderr, "Cannot parse -t %s: %s\n", argv[argi+1], strerror(-err));
+				exit(EXIT_FAILURE);
+			}
+			argi++;
+
+		} else if(!strcmp("-u", argv[argi]) && argi + 1 < argc) {
+			err = mapping_parse_add_udp(&mapping, AF_UNSPEC, argv[argi+1]);
+			argi++;
+			if(err) {
+				fprintf(stderr, "Cannot parse -u %s: %s\n", argv[argi+1], strerror(-err));
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+
+	err = mapping_find_inodes(mapping);
+	if(err) {
+		fprintf(stderr, "Cannot find inodes: %s\n", strerror(-err));
+		exit(EXIT_FAILURE);
+	}
 
 	/* Set up libbpf errors and debug info callback */
 	libbpf_set_print(libbpf_print_fn);

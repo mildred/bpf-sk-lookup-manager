@@ -63,6 +63,23 @@ Each program type, for a given helper function name can associate a different
 implementation. Here, we would want an implementation that would not cause
 infinite loops.
 
+Without changing the Linux kernel, there is a way to get to it:
+
+- [x] On CLI, get a list of mappings : inet protocol / port to address and port
+- [x] Use sock_diag API to get the inode number of sockets matching the *to*
+  part
+- [x] Parse `/proc/*/fd/*` to get a PID from a socket inode
+- [x] Use `pidfd_open` and `pidfd_getfd` to get file descriptor from socket
+- [ ] Install a sk_lookup BPF program that performs the mapping using the file
+  descriptors collected
+- [ ] If not done already, install a BPF trace program to monitor calls to
+  `bind()`
+- [ ] When there is a `bind()` called, reload the listening socket table using
+  sock_diag
+- [ ] if there are changes relevant to our configuration (check if file
+  descriptors are identical using fstat on both and compare inode/dev numbers),
+  reload the sk_lookup BPF program with the new file descriptors.
+
 
 Requirement
 -----------
@@ -78,7 +95,7 @@ Build
 Run
 ---
 
-Work in progress
+Work in progress. Run as root:
 
     src/sk_lookup_manager
 
@@ -98,4 +115,23 @@ Documentation
 - sk_lookup sample [tools/testing/selftests/bpf/prog_tests/sk_lookup.c](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/testing/selftests/bpf/prog_tests/sk_lookup.c?h=v5.11) for the C part and [tools/testing/selftests/bpf/progs/test_sk_lookup.c](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/testing/selftests/bpf/progs/test_sk_lookup.c?h=v5.11) for the eBPF part.
 - [libbpf](https://github.com/libbpf/libbpf) with [libbpf-bootstrap](https://github.com/libbpf/libbpf-bootstrap) and [blog post](https://nakryiko.com/posts/libbpf-bootstrap/)
 - [BPF kernel development](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/bpf/bpf_devel_QA.rst)
-- [Kernel Virtual Machine](https://linux-kernel-labs.github.io/refs/heads/master/info/vm.html)
+
+### Kernel devlopment ###
+
+[Kernel Virtual Machine](https://linux-kernel-labs.github.io/refs/heads/master/info/vm.html) or [this setup](https://saurorja.org/2011/07/04/creating-a-minimal-kernel-development-setup-using-kvmqemu/)
+
+Create the VM
+
+    wget https://cdimage.debian.org/cdimage/bullseye_di_alpha3/amd64/iso-cd/debian-bullseye-DI-alpha3-amd64-netinst.iso
+    qemu-img create -f raw debian.img 3G
+    qemu-kvm -m 512 -boot d -hda debian.img -cdrom debian-bullseye-DI-alpha3-amd64-netinst.iso
+    
+Boot debian kernel:
+
+    qemu-kvm -smp 2 -m 512 -boot c -vga std -soundhw es1370 -net nic -net user,hostfwd=tcp::10022-:22 -hda debian.img
+
+- login: debian
+- password: debian
+- root password: root
+- connect to VM: `ssh debian@127.0.0.1 -p 10022`
+- transfer files: `ssync --rsh='ssh -p 10022' root@127.0.0.1:/boot/config-5.10.0-3-amd64 ../linux/debian-config-5.10.0-3-amd64`
