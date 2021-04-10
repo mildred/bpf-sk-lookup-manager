@@ -70,7 +70,7 @@ Without changing the Linux kernel, there is a way to get to it:
   part
 - [x] Parse `/proc/*/fd/*` to get a PID from a socket inode
 - [x] Use `pidfd_open` and `pidfd_getfd` to get file descriptor from socket
-- [ ] Install a sk_lookup BPF program that performs the mapping using the file
+- [x] Install a sk_lookup BPF program that performs the mapping using the file
   descriptors collected
 - [ ] If not done already, install a BPF trace program to monitor calls to
   `bind()`
