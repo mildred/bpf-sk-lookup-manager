@@ -97,7 +97,16 @@ Run
 
 Work in progress. Run as root:
 
-    src/sk_lookup_manager
+    cat /sys/kernel/debug/tracing/trace_pipe &
+    src/sk_lookup_manager -t 5555=0.0.0.0:22 -t 5555=[::]:22
+
+Run a server to check:
+
+    nc -l 5555
+
+Connect to port 5555, you are redirected to your SSH server:
+
+    nc ::1 5555
 
 Check
 -----

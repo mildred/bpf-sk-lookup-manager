@@ -239,8 +239,8 @@ static int mapping_find_inodes(mapping_t *mapping) {
 
         struct rtattr *attr;
         unsigned int rta_len = len - NLMSG_LENGTH(sizeof(*diag));
-        unsigned int peer = 0;
-        size_t path_len = 0;
+        //unsigned int peer = 0;
+        //size_t path_len = 0;
         struct tcp_info *tcpi;
         //char path[sizeof(((struct sockaddr_un *) 0)->sun_path) + 1];
 

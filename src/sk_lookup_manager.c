@@ -86,6 +86,8 @@ int main(int argc, char **argv){
 		exit(EXIT_FAILURE);
 	}
 
+	if(!mapping || !mapping->fd) return 0;
+
 	/* Set up libbpf errors and debug info callback */
 	libbpf_set_print(libbpf_print_fn);
 
@@ -105,8 +107,28 @@ int main(int argc, char **argv){
 		goto cleanup;
 	}
 
+	skel->bss->redirect_port = mapping->from_port;
+	skel->bss->redirect_family = mapping->family;
+	skel->bss->redirect_protocol = mapping->protocol;
+
+	int map_fd = bpf_map__fd(skel->maps.redir_map);
+	if (map_fd < 0) {
+		err = -map_fd;
+		fprintf(stderr, "Failed to get BPF map file descriptor\n");
+		goto cleanup;
+	}
+	uint64_t map_value = (uint64_t) mapping->fd;
+	int map_index = 0;
+	err = bpf_map_update_elem(map_fd, &map_index, &map_value, BPF_NOEXIST);
+	if (err) {
+		fprintf(stderr, "Failed to put file descriptor to BPF map\n");
+		goto cleanup;
+	}
+
+	close(map_fd);
+
 	/* Attach program */
-	struct bpf_link *link = attach_lookup_prog(skel->progs.hello_world);
+	struct bpf_link *link = attach_lookup_prog(skel->progs.redirect);
 	if (!link) {
 		fprintf(stderr, "Failed to attach BPF skeleton\n");
 		goto cleanup;

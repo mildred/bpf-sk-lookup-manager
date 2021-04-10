@@ -145,6 +145,7 @@ static bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct s
             return true;
         }
     }
+    return false;
 }
 
 static bool ip_eq(const struct sockaddr *sa0, const struct sockaddr *sa1){
