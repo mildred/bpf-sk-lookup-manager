@@ -316,12 +316,14 @@ static int mapping_find_inodes(mapping_t *mapping) {
             //    get_ip_str(mapping->to_addr->ai_addr, addr2, 1024));
 
             if(ip_eq((struct sockaddr*) &src, mapping->to_addr->ai_addr)) {
-              printf("IPv4 %d -> %s == %s inode=%d\n",
-                  mapping->from_port,
-                  get_ip_str((struct sockaddr*) &src, addr1, 1024),
-                  get_ip_str(mapping->to_addr->ai_addr, addr2, 1024),
-                  diag->idiag_inode);
+              //printf("IPv4 %d -> %s == %s inode=%d\n",
+              //    mapping->from_port,
+              //    get_ip_str((struct sockaddr*) &src, addr1, 1024),
+              //    get_ip_str(mapping->to_addr->ai_addr, addr2, 1024),
+              //    diag->idiag_inode);
               mapping->inode = diag->idiag_inode;
+              get_ip_str((struct sockaddr*) &src, addr1, 1024);
+              get_ip_str(mapping->to_addr->ai_addr, addr2, 1024);
             }
             break;
           }
@@ -347,12 +349,14 @@ static int mapping_find_inodes(mapping_t *mapping) {
             //    get_ip_str(mapping->to_addr->ai_addr, addr2, 1024));
 
             if(ip_eq((struct sockaddr*) &src, mapping->to_addr->ai_addr)) {
-              printf("IPv6 %d -> %s == %s inode=%d\n",
-                  mapping->from_port,
-                  get_ip_str((struct sockaddr*) &src, addr1, 1024),
-                  get_ip_str(mapping->to_addr->ai_addr, addr2, 1024),
-                  diag->idiag_inode);
+              //printf("IPv6 %d -> %s == %s inode=%d\n",
+              //    mapping->from_port,
+              //    get_ip_str((struct sockaddr*) &src, addr1, 1024),
+              //    get_ip_str(mapping->to_addr->ai_addr, addr2, 1024),
+              //    diag->idiag_inode);
               mapping->inode = diag->idiag_inode;
+              get_ip_str((struct sockaddr*) &src, addr1, 1024);
+              get_ip_str(mapping->to_addr->ai_addr, addr2, 1024);
             }
             break;
           }
@@ -382,7 +386,9 @@ static int mapping_find_inodes(mapping_t *mapping) {
           if(mapping->fdstat.st_dev != st.st_dev || mapping->fdstat.st_ino != st.st_ino) {
             mapping->fd = newfd;
             memcpy(&mapping->fdstat, &st, sizeof(struct stat));
-            printf("Found in PID=%d, fd=%d -> %d\n", mapping->pid, mapping->pid_fd, mapping->fd);
+            printf("[PID %d] :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",
+                mapping->pid, mapping->from_port, addr1, mapping->pid, mapping->pid_fd, mapping->inode, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
+            //printf("Found in PID=%d, fd=%d -> %d (%ld:%ld))\n", mapping->pid, mapping->pid_fd, mapping->fd, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
           } else {
             close(newfd);
           }

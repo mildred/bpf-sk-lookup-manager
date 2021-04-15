@@ -62,7 +62,6 @@ static int install_sk_lookup(mapping_t *map) {
 	int err;
 	if (map->fd) {
 		if(map->skel) {
-			printf("fd changed\n");
 			bpf_link__destroy(map->link);
 			sk_lookup_manager_bpf__destroy(map->skel);
 		}
@@ -111,17 +110,23 @@ static int install_sk_lookup(mapping_t *map) {
 			fprintf(stderr, "Failed to attach BPF skeleton\n");
 			return 1;
 		}
+		char addr1[1024];
+		get_ip_str(map->to_addr->ai_addr, addr1, 1024);
+		printf("Attached :%d to %s /proc/%d/fd/%d [%ld:%ld]\n", map->from_port, addr1, map->pid, map->pid_fd, map->fdstat.st_dev, map->fdstat.st_ino);
 	}
 
 	return 0;
 }
 
 int main(int argc, char **argv){
+	int verbose = 0;
 	int err = 0;
 	mapping_t *mapping = 0;
 
 	for(int argi = 1; argi < argc; argi++) {
-		if(!strcmp("-t", argv[argi]) && argi + 1 < argc) {
+		if(!strcmp("-v", argv[argi])) {
+			verbose = 1;
+		} else if(!strcmp("-t", argv[argi]) && argi + 1 < argc) {
 			err = mapping_parse_add_tcp(&mapping, AF_UNSPEC, argv[argi+1]);
 			if(err){
 				fprintf(stderr, "Cannot parse -t %s: %s\n", argv[argi+1], strerror(-err));
@@ -148,7 +153,7 @@ int main(int argc, char **argv){
 	}
 
 	/* Set up libbpf errors and debug info callback */
-	libbpf_set_print(libbpf_print_fn);
+	if(verbose) libbpf_set_print(libbpf_print_fn);
 
 	/* Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything */
 	bump_memlock_rlimit();
@@ -158,11 +163,8 @@ int main(int argc, char **argv){
 		if(err) goto cleanup;
 	}
 
-	printf("Successfully started!\n");
-
 	for (;;) {
 		/* trigger our BPF program */
-		fprintf(stderr, "\n");
 		sleep(1);
 
 		do {
