@@ -76,7 +76,7 @@ Without changing the Linux kernel, there is a way to get to it:
   `bind()`
 - [ ] When there is a `bind()` called, reload the listening socket table using
   sock_diag
-- [ ] if there are changes relevant to our configuration (check if file
+- [x] if there are changes relevant to our configuration (check if file
   descriptors are identical using fstat on both and compare inode/dev numbers),
   reload the sk_lookup BPF program with the new file descriptors.
 
@@ -107,6 +107,8 @@ Run a server to check:
 Connect to port 5555, you are redirected to your SSH server:
 
     nc ::1 5555
+
+- Restart sshd then retry `nc ::1 5555`, it should have detected new socket.
 
 Check
 -----

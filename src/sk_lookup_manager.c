@@ -9,6 +9,7 @@
 
 #include <linux/bpf.h>
 
+#include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
 #include "sk_lookup_manager.skel.h"
@@ -57,6 +58,64 @@ static void bump_memlock_rlimit(void)
 	}
 }
 
+static int install_sk_lookup(mapping_t *map) {
+	int err;
+	if (map->fd) {
+		if(map->skel) {
+			printf("fd changed\n");
+			bpf_link__destroy(map->link);
+			sk_lookup_manager_bpf__destroy(map->skel);
+		}
+
+		map->skel = sk_lookup_manager_bpf__open();
+		if (!map->skel) {
+			fprintf(stderr, "Failed to open skeleton\n");
+			return 1;
+		}
+
+		/* Load & verify BPF programs */
+		err = sk_lookup_manager_bpf__load(map->skel);
+		if (err) {
+			fprintf(stderr, "Failed to load and verify BPF skeleton\n");
+			return err;
+		}
+
+		map->skel->bss->redirect_port = map->from_port;
+		map->skel->bss->redirect_family = map->family;
+		map->skel->bss->redirect_protocol = map->protocol;
+
+		int map_fd = bpf_map__fd(map->skel->maps.redir_map);
+		if (map_fd < 0) {
+			err = -map_fd;
+			fprintf(stderr, "Failed to get BPF map file descriptor\n");
+			return err;
+		}
+		uint64_t map_value = (uint64_t) map->fd;
+		int map_index = 0;
+		err = bpf_map_update_elem(map_fd, &map_index, &map_value, BPF_NOEXIST);
+		if (err) {
+			fprintf(stderr, "Failed to put file descriptor to BPF map\n");
+			close(map_fd);
+			return err;
+		}
+
+		// close map->fd to avoid holding it when not in use
+		close(map->fd);
+		map->fd = 0;
+
+		close(map_fd);
+
+		/* Attach program */
+		map->link = attach_lookup_prog(map->skel->progs.redirect);
+		if (!map->link) {
+			fprintf(stderr, "Failed to attach BPF skeleton\n");
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv){
 	int err = 0;
 	mapping_t *mapping = 0;
@@ -80,13 +139,13 @@ int main(int argc, char **argv){
 		}
 	}
 
-	err = mapping_find_inodes(mapping);
+	do {
+		err = mapping_find_inodes(mapping);
+	} while(-err == EAGAIN);
 	if(err) {
 		fprintf(stderr, "Cannot find inodes: %s\n", strerror(-err));
 		exit(EXIT_FAILURE);
 	}
-
-	if(!mapping || !mapping->fd) return 0;
 
 	/* Set up libbpf errors and debug info callback */
 	libbpf_set_print(libbpf_print_fn);
@@ -94,55 +153,39 @@ int main(int argc, char **argv){
 	/* Bump RLIMIT_MEMLOCK to allow BPF sub-system to do anything */
 	bump_memlock_rlimit();
 
-	struct sk_lookup_manager_bpf *skel = sk_lookup_manager_bpf__open();
-	if (!skel) {
-		fprintf(stderr, "Failed to open skeleton\n");
-		return 1;
-	}
-
-	/* Load & verify BPF programs */
-	err = sk_lookup_manager_bpf__load(skel);
-	if (err) {
-		fprintf(stderr, "Failed to load and verify BPF skeleton\n");
-		goto cleanup;
-	}
-
-	skel->bss->redirect_port = mapping->from_port;
-	skel->bss->redirect_family = mapping->family;
-	skel->bss->redirect_protocol = mapping->protocol;
-
-	int map_fd = bpf_map__fd(skel->maps.redir_map);
-	if (map_fd < 0) {
-		err = -map_fd;
-		fprintf(stderr, "Failed to get BPF map file descriptor\n");
-		goto cleanup;
-	}
-	uint64_t map_value = (uint64_t) mapping->fd;
-	int map_index = 0;
-	err = bpf_map_update_elem(map_fd, &map_index, &map_value, BPF_NOEXIST);
-	if (err) {
-		fprintf(stderr, "Failed to put file descriptor to BPF map\n");
-		goto cleanup;
-	}
-
-	close(map_fd);
-
-	/* Attach program */
-	struct bpf_link *link = attach_lookup_prog(skel->progs.redirect);
-	if (!link) {
-		fprintf(stderr, "Failed to attach BPF skeleton\n");
-		goto cleanup;
+	for(mapping_t *map = mapping; map; map = map->next) {
+		err = install_sk_lookup(map);
+		if(err) goto cleanup;
 	}
 
 	printf("Successfully started!\n");
 
 	for (;;) {
 		/* trigger our BPF program */
-		fprintf(stderr, ".");
+		fprintf(stderr, "\n");
 		sleep(1);
+
+		do {
+			err = mapping_find_inodes(mapping);
+		} while(err == -EAGAIN);
+		if(err) {
+			fprintf(stderr, "Cannot find inodes: %s\n", strerror(-err));
+			exit(EXIT_FAILURE);
+		}
+
+		for(mapping_t *map = mapping; map; map = map->next) {
+			err = install_sk_lookup(map);
+			if(err) goto cleanup;
+		}
+
 	}
 
 cleanup:
-	sk_lookup_manager_bpf__destroy(skel);
+	for(mapping_t *map = mapping; map; map = map->next) {
+		if(map->skel) {
+			bpf_link__destroy(map->link);
+			sk_lookup_manager_bpf__destroy(map->skel);
+		}
+	}
 	return -err;
 }

@@ -13,6 +13,8 @@
 #include "./ip_funcs.h"
 #include "./sock.h"
 
+struct sk_lookup_manager_bpf;
+
 typedef struct mapping {
   int              family;
   int              protocol;
@@ -22,6 +24,9 @@ typedef struct mapping {
   pid_t            pid;
   int              pid_fd;
   int              fd;
+  struct stat      fdstat;
+  struct sk_lookup_manager_bpf *skel;
+  struct bpf_link *link ;
   struct mapping  *next;
 } mapping_t;
 
@@ -357,11 +362,30 @@ static int mapping_find_inodes(mapping_t *mapping) {
             goto cleanup;
         }
 
+        //printf("Found inode=%ld\n", mapping->inode);
+
         if(mapping->inode) {
-          if(mapping->fd) close(mapping->fd);
-          mapping->fd = sock_pid_fd_from_inode(mapping->inode, &mapping->pid, &mapping->pid_fd);
-          printf("Found in PID=%d, fd=%d -> %d\n", mapping->pid, mapping->pid_fd, mapping->fd);
-          // TODO compare with fstat the old and new fd to see if it changed
+          int newfd = sock_pid_fd_from_inode(mapping->inode, &mapping->pid, &mapping->pid_fd);
+          if(newfd < 0) {
+            fprintf(stderr, "Cannot fetch inode(%ld): %s (%s)\n",  mapping->inode, strerror(-newfd), strerror(errno));
+            err = (newfd == -EINVAL) ? EAGAIN : -newfd;
+            goto cleanup;
+          }
+          // Compare with fstat the old and new fd to see if it changed
+
+          struct stat st;
+          if(fstat(newfd, &st) < 0) {
+            fprintf(stderr, "Cannot fstat inode(%ld) fd %d: %s\n", mapping->inode, newfd, strerror(errno));
+            err = errno;
+            goto cleanup;
+          }
+          if(mapping->fdstat.st_dev != st.st_dev || mapping->fdstat.st_ino != st.st_ino) {
+            mapping->fd = newfd;
+            memcpy(&mapping->fdstat, &st, sizeof(struct stat));
+            printf("Found in PID=%d, fd=%d -> %d\n", mapping->pid, mapping->pid_fd, mapping->fd);
+          } else {
+            close(newfd);
+          }
         }
 
 #if 0
@@ -396,6 +420,7 @@ static mapping_t *mapping_parse(int *in_argc, char **in_argv[]){
 #undef argv
 }
 #endif
+
 
 #endif
 
