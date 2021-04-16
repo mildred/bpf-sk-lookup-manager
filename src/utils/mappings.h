@@ -5,7 +5,6 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/sock_diag.h>
-//#include <linux/unix_diag.h> /* for unix sockets */
 #include <linux/inet_diag.h> /* for IPv4 and IPv6 sockets */
 #include <netinet/tcp.h>
 
@@ -46,20 +45,6 @@ static inline int mapping_parse_add_udp(mapping_t **in_mapping, int family, cons
 
 
 int mapping_find_inodes(mapping_t *mapping);
-
-#if 0
-static mapping_t *mapping_parse(int *in_argc, char **in_argv[]){
-#define argc (*in_args)
-#define argv (*in_argv)
-  while(argc > 0) {
-    argv[ar]
-    argc++
-  }
-#undef argc
-#undef argv
-}
-#endif
-
 
 #endif
 

@@ -94,25 +94,6 @@ int mapping_find_inodes(mapping_t *mapping) {
       .idr.sdiag_family = mapping->family,
       .idr.sdiag_protocol = mapping->protocol,
       .idr.idiag_states = 1<<TCP_CLOSE | 1<<TCP_LISTEN,
-
-      /*
-      .idr = {
-        .sdiag_family = mapping->family,
-        .sdiag_protocol = mapping->protocol,
-        .idiag_ext = 0,
-        .pad = 0,
-        .idiag_states = TCP_LISTEN,
-        .id = { }
-        //.id = {
-        //  .idiag_sport = 0,
-        //  .idiag_dport = 0,
-        //  .idiag_src = {0, 0, 0, 0},
-        //  .idiag_dst = {0, 0, 0, 0},
-        //  .idiag_if = 0,
-        //  .idiag_cookie = {-1, -1}
-        //}
-      }
-      */
     };
     struct iovec iov_req = {
       .iov_base = &req,
@@ -198,18 +179,10 @@ int mapping_find_inodes(mapping_t *mapping) {
           err = EPROTO;
           goto cleanup;
         }
-        //if (diag->idiag_family != AF_UNIX) {
-        //  fprintf(stderr, "unexpected family %u\n", diag->idiag_family);
-        //  err = EPROTO;
-        //  goto cleanup;
-        //}
 
         struct rtattr *attr;
         unsigned int rta_len = len - NLMSG_LENGTH(sizeof(*diag));
-        //unsigned int peer = 0;
-        //size_t path_len = 0;
         struct tcp_info *tcpi;
-        //char path[sizeof(((struct sockaddr_un *) 0)->sun_path) + 1];
 
         for (attr = (struct rtattr *) (diag + 1);
             RTA_OK(attr, rta_len); attr = RTA_NEXT(attr, rta_len)) {
@@ -230,22 +203,6 @@ int mapping_find_inodes(mapping_t *mapping) {
                   tcpi->tcpi_snd_cwnd);
               break;
 
-#if 0
-            case UNIX_DIAG_NAME:
-              if (!path_len) {
-                path_len = RTA_PAYLOAD(attr);
-                if (path_len > sizeof(path) - 1)
-                  path_len = sizeof(path) - 1;
-                memcpy(path, RTA_DATA(attr), path_len);
-                path[path_len] = '\0';
-              }
-              break;
-
-            case UNIX_DIAG_PEER:
-              if (RTA_PAYLOAD(attr) >= sizeof(peer))
-                peer = *(unsigned int *) RTA_DATA(attr);
-              break;
-#endif
           default:
               break;
           }
@@ -355,17 +312,6 @@ int mapping_find_inodes(mapping_t *mapping) {
             close(newfd);
           }
         }
-
-#if 0
-        if (peer)
-          printf(", peer=%u", peer);
-
-        if (path_len)
-          printf(", name=%s%s", *path ? "" : "@",
-              *path ? path : path + 1);
-
-        putchar('\n');
-#endif
       }
     }
     err = 0;
