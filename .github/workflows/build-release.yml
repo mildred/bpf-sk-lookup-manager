@@ -22,14 +22,15 @@ jobs:
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
 
-    - name: Setup C++ environment
-      uses: kurocha/setup-cpp@v1
+    - name: Install dependencies
+      run: sudo apt-get install libelf-dev libc6-dev-i386 llvm build-essential clang
 
     - uses: actions/checkout@v2
 
     - name: Git
       run: |
         git fetch --tags --unshallow origin
+        git submodule update --init
         git status
         echo Version:
         git describe --always
