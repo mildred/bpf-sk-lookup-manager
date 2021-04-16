@@ -12,6 +12,8 @@ INCLUDES := -I$(OUTPUT) -I../libbpf/include/uapi
 CFLAGS := -g -Wall
 ARCH := $(shell uname -m | sed 's/x86_64/x86/')
 
+CFLAGS += -DVERSION='"$(shell git describe --always --dirty)"'
+
 APPS = minimal bootstrap uprobe kprobe fentry sk_lookup_manager
 
 # Get Clang's default includes on this system. We'll explicitly add these dirs
@@ -45,7 +47,7 @@ clean:
 	$(call msg,CLEAN)
 	$(Q)rm -rf $(OUTPUT) $(APPS)
 
-$(OUTPUT) $(OUTPUT)/libbpf:
+$(OUTPUT) $(OUTPUT)/utils $(OUTPUT)/libbpf:
 	$(call msg,MKDIR,$@)
 	$(Q)mkdir -p $@
 
@@ -71,6 +73,10 @@ $(OUTPUT)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT)
 # Build user-space code
 $(patsubst %,$(OUTPUT)/%.o,$(APPS)): %.o: %.skel.h
 
+$(OUTPUT)/utils/%.o: utils/%.c $(wildcard utils/%.h) | $(OUTPUT)/utils
+	$(call msg,CC,$@)
+	$(Q)$(CC) $(CFLAGS) $(INCLUDES) -c $(filter %.c,$^) -o $@
+
 $(OUTPUT)/%.o: %.c $(wildcard %.h) | $(OUTPUT)
 	$(call msg,CC,$@)
 	$(Q)$(CC) $(CFLAGS) $(INCLUDES) -c $(filter %.c,$^) -o $@
@@ -79,6 +85,8 @@ $(OUTPUT)/%.o: %.c $(wildcard %.h) | $(OUTPUT)
 $(APPS): %: $(OUTPUT)/%.o $(LIBBPF_OBJ) | $(OUTPUT)
 	$(call msg,BINARY,$@)
 	$(Q)$(CC) $(CFLAGS) $^ -lelf -lz -o $@
+
+sk_lookup_manager: $(OUTPUT)/utils/mappings.o $(OUTPUT)/utils/ip_funcs.o $(OUTPUT)/utils/sock.o
 
 # delete failed targets
 .DELETE_ON_ERROR:

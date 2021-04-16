@@ -1,45 +1,30 @@
-#ifndef _BPF_SK_LOOKUP_MANAGER_UTILS_MAPPINGS_H_
-#define _BPF_SK_LOOKUP_MANAGER_UTILS_MAPPINGS_H_
-
+#include <errno.h>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-#include <linux/sock_diag.h>
-//#include <linux/unix_diag.h> /* for unix sockets */
-#include <linux/inet_diag.h> /* for IPv4 and IPv6 sockets */
-#include <netinet/tcp.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
+#include "mappings.h"
 
-#include "./ip_funcs.h"
-#include "./sock.h"
+static const char* tcp_states_map[]={
+    [TCP_ESTABLISHED] = "ESTABLISHED",
+    [TCP_SYN_SENT] = "SYN-SENT",
+    [TCP_SYN_RECV] = "SYN-RECV",
+    [TCP_FIN_WAIT1] = "FIN-WAIT-1",
+    [TCP_FIN_WAIT2] = "FIN-WAIT-2",
+    [TCP_TIME_WAIT] = "TIME-WAIT",
+    [TCP_CLOSE] = "CLOSE",
+    [TCP_CLOSE_WAIT] = "CLOSE-WAIT",
+    [TCP_LAST_ACK] = "LAST-ACK",
+    [TCP_LISTEN] = "LISTEN",
+    [TCP_CLOSING] = "CLOSING"
+};
 
-struct sk_lookup_manager_bpf;
-
-typedef struct mapping {
-  int              family;
-  int              protocol;
-  int              from_port;
-  struct addrinfo *to_addr;
-  ino_t            inode;
-  pid_t            pid;
-  int              pid_fd;
-  int              fd;
-  struct stat      fdstat;
-  struct sk_lookup_manager_bpf *skel;
-  struct bpf_link *link ;
-  struct mapping  *next;
-} mapping_t;
-
-static void mapping_free(mapping_t *map) {
-  while(map) {
-    mapping_t *next_map = map->next;
-    freeaddrinfo(map->to_addr);
-    free(map);
-    map = next_map;
-  }
-}
-
-static int mapping_parse_add_any(mapping_t **in_mapping, int family, int proto, const char *spec) {
+int mapping_parse_add_any(mapping_t **in_mapping, int family, int proto, const char *spec) {
 #define mapping (*in_mapping)
   int port = atoi(spec);
   const char *spec_to = strchr(spec, '=');
@@ -76,30 +61,7 @@ static int mapping_parse_add_any(mapping_t **in_mapping, int family, int proto, 
 #undef mapping
 }
 
-static inline int mapping_parse_add_tcp(mapping_t **in_mapping, int family, const char *spec) {
-  return mapping_parse_add_any(in_mapping, family, IPPROTO_TCP, spec);
-}
-
-static inline int mapping_parse_add_udp(mapping_t **in_mapping, int family, const char *spec) {
-  return mapping_parse_add_any(in_mapping, family, IPPROTO_UDP, spec);
-}
-
-
-static const char* tcp_states_map[]={
-    [TCP_ESTABLISHED] = "ESTABLISHED",
-    [TCP_SYN_SENT] = "SYN-SENT",
-    [TCP_SYN_RECV] = "SYN-RECV",
-    [TCP_FIN_WAIT1] = "FIN-WAIT-1",
-    [TCP_FIN_WAIT2] = "FIN-WAIT-2",
-    [TCP_TIME_WAIT] = "TIME-WAIT",
-    [TCP_CLOSE] = "CLOSE",
-    [TCP_CLOSE_WAIT] = "CLOSE-WAIT",
-    [TCP_LAST_ACK] = "LAST-ACK",
-    [TCP_LISTEN] = "LISTEN",
-    [TCP_CLOSING] = "CLOSING"
-};
-
-static int mapping_find_inodes(mapping_t *mapping) {
+int mapping_find_inodes(mapping_t *mapping) {
   int err = 0;
   int fd = 0;
 
@@ -414,19 +376,11 @@ cleanup:
   return -err;
 }
 
-#if 0
-static mapping_t *mapping_parse(int *in_argc, char **in_argv[]){
-#define argc (*in_args)
-#define argv (*in_argv)
-  while(argc > 0) {
-    argv[ar]
-    argc++
+void mapping_free(mapping_t *map) {
+  while(map) {
+    mapping_t *next_map = map->next;
+    freeaddrinfo(map->to_addr);
+    free(map);
+    map = next_map;
   }
-#undef argc
-#undef argv
 }
-#endif
-
-
-#endif
-

@@ -1,10 +1,10 @@
-#ifndef _BPF_SK_LOOKUP_MANAGER_UTILS_SOCK_H_
-#define _BPF_SK_LOOKUP_MANAGER_UTILS_SOCK_H_
-
-#include <unistd.h>
 #include <sys/syscall.h>
-#include <sys/types.h>
 #include <dirent.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#include "sock.h"
 
 static int pidfd_open(pid_t pid, int flags){
   return syscall(434, pid, flags);
@@ -72,7 +72,7 @@ cleanup:
   return -err;
 }
 
-static int sock_pid_fd_from_inode(ino_t inode, pid_t *pid, int *fd) {
+int sock_pid_fd_from_inode(ino_t inode, pid_t *pid, int *fd) {
   int err = 0;
 
   struct dirent **namelist = 0;
@@ -104,6 +104,3 @@ cleanup:
   if(namelist) free(namelist);
   return -err;
 }
-
-#endif
-

@@ -1,21 +1,12 @@
-#ifndef _BPF_SK_LOOKUP_MANAGER_UTILS_IP_FUNCS_H_
-#define _BPF_SK_LOOKUP_MANAGER_UTILS_IP_FUNCS_H_
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
+#include "ip_funcs.h"
 
-
-/**
- * Searches in `nodeport0` the `:` character (parsing correctly IPv6 addresses
- * if enclosed within `[` and `]`) and split it into two strings: the node and
- * the port. Calls `getaddrinfo()` with the splitted strings and the resulting
- * arguments.
- */
-static int getaddrinfo2(const char *nodeport0,
-                       const struct addrinfo *hints,
-                       struct addrinfo **res) {
+int getaddrinfo2(const char *nodeport0,
+                 const struct addrinfo *hints,
+                 struct addrinfo **res) {
     size_t len = strlen(nodeport0);
     char nodeport[len+1];
     strncpy(nodeport, nodeport0, len+1);
@@ -42,10 +33,7 @@ static int getaddrinfo2(const char *nodeport0,
     return getaddrinfo(node, service, hints, res);
 }
 
-/**
- * Convert and IP address to a string
- */
-static char *
+char *
 get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
 {
 #define sa4 ((struct sockaddr_in *)sa)
@@ -78,7 +66,7 @@ get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
 #undef sa6
 }
 
-static struct in_addr
+struct in_addr
 netAddrIpv4(int prefix, struct in_addr *addr) {
     if(prefix < 0) prefix=32;
     in_addr_t netmask = 0;
@@ -89,7 +77,7 @@ netAddrIpv4(int prefix, struct in_addr *addr) {
     return res;
 }
 
-static struct in6_addr
+struct in6_addr
 netAddrIpv6(int prefix, struct in6_addr *addr) {
     if(prefix < 0) prefix=128;
     struct in6_addr netmask;
@@ -105,7 +93,7 @@ netAddrIpv6(int prefix, struct in6_addr *addr) {
     return netmask;
 }
 
-static bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct sockaddr *sa1, int prefix1){
+bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct sockaddr *sa1, int prefix1){
     //char straddr1[1024], straddr2[1024];
     //printf("ip_eq_prefix(%s, %d, %s, %d)\n",
     //    get_ip_str((struct sockaddr*) sa0, straddr1, 1024), prefix0,
@@ -148,9 +136,6 @@ static bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct s
     return false;
 }
 
-static bool ip_eq(const struct sockaddr *sa0, const struct sockaddr *sa1){
+bool ip_eq(const struct sockaddr *sa0, const struct sockaddr *sa1){
     return ip_eq_prefix(sa0, -1, sa1, -1);
 }
-
-#endif
-

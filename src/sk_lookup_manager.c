@@ -14,7 +14,7 @@
 
 #include "sk_lookup_manager.skel.h"
 
-#include "../utils/mappings.h"
+#include "utils/mappings.h"
 
 static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 {
@@ -124,7 +124,41 @@ int main(int argc, char **argv){
 	mapping_t *mapping = 0;
 
 	for(int argi = 1; argi < argc; argi++) {
-		if(!strcmp("-v", argv[argi])) {
+		if(!strcmp("-h", argv[argi]) || !strcmp("--help", argv[argi])) {
+			//     "---------|---------|---------|---------|---------|---------|---------|-|-------|
+			//     "------->------->------->------->------->------->------->------->-------|-------|
+			printf("%s [OPTIONS]\n", argv[0]);
+			printf("\n"
+				"Manages the sk-lookup BPF programs on the system. Redirects incoming\n"
+				"connections on some destination ports to specified sockets. Refresh\n"
+				"every second the sockets in case services were restarted or stopped.\n"
+				"\n"
+				"OPTIONS:\n"
+				"        -h, --help      this help\n"
+#ifdef VERSION
+				"        --version       version information\n"
+#endif
+				"        -v              verbose messages\n"
+				"        -t PORT=ADDR    redirect TCP port to ADDR\n"
+				"        -u PORT=ADDR    redirect UDP port to ADDR\n"
+				"\n"
+				"Examples:\n"
+				"        -t 2222=0.0.0.0:22 -t 2222=[::]:22 redirects every incoming\n"
+				"        connection on port 2222 to SSH server that is listening to\n"
+				"        0.0.0.0:22 and [::]:22. Both families are listed to account for\n"
+				"        IPv4 and IPv6 packets.\n"
+				"\n"
+				"Hints: Errors in BPF can appear in /sys/kernel/debug/tracing/trace_pipe\n");
+#ifdef VERSION
+			printf("\nVersion: %s\n", VERSION);
+#endif
+			return 0;
+#ifdef VERSION
+		} else if(!strcmp("--version", argv[argi])) {
+			printf("%s version: %s\n", argv[0], VERSION);
+			return 0;
+#endif
+		} else if(!strcmp("-v", argv[argi])) {
 			verbose = 1;
 		} else if(!strcmp("-t", argv[argi]) && argi + 1 < argc) {
 			err = mapping_parse_add_tcp(&mapping, AF_UNSPEC, argv[argi+1]);
