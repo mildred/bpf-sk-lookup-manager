@@ -240,7 +240,7 @@ int mapping_find_inodes(mapping_t *mapping) {
             //    get_ip_str((struct sockaddr*) &src, addr1, 1024),
             //    get_ip_str(mapping->to_addr->ai_addr, addr2, 1024));
 
-            if(ip_eq((struct sockaddr*) &src, mapping->to_addr->ai_addr)) {
+            if(!newfd && ip_eq((struct sockaddr*) &src, mapping->to_addr->ai_addr)) {
               //printf("IPv4 %d -> %s == %s inode=%d\n",
               //    mapping->from_port,
               //    get_ip_str((struct sockaddr*) &src, addr1, 1024),
@@ -278,7 +278,7 @@ int mapping_find_inodes(mapping_t *mapping) {
             //    get_ip_str((struct sockaddr*) &src, addr1, 1024),
             //    get_ip_str(mapping->to_addr->ai_addr, addr2, 1024));
 
-            if(ip_eq((struct sockaddr*) &src, mapping->to_addr->ai_addr)) {
+            if(!newfd && ip_eq((struct sockaddr*) &src, mapping->to_addr->ai_addr)) {
               //printf("IPv6 %d -> %s == %s inode=%d\n",
               //    mapping->from_port,
               //    get_ip_str((struct sockaddr*) &src, addr1, 1024),
@@ -303,11 +303,11 @@ int mapping_find_inodes(mapping_t *mapping) {
 
         //printf("Found inode=%ld\n", mapping->inode);
 
-        if(mapping->inode) {
+        if(!newfd && mapping->inode) {
           memcpy(addr, addr1, 1024);
           newfd = sock_pid_fd_from_inode(mapping->inode, &mapping->pid, &mapping->pid_fd);
           if(newfd < 0) {
-            fprintf(stderr, "Cannot fetch inode(%ld): %s (%s)\n",  mapping->inode, strerror(-newfd), strerror(errno));
+            fprintf(stderr, "Cannot fetch inode(%ld) for /proc/%d/fd/%d: %s (%s)\n",  mapping->inode, mapping->pid, mapping->pid_fd, strerror(-newfd), strerror(errno));
             err = (newfd == -EINVAL) ? EAGAIN : -newfd;
             goto cleanup;
           }
@@ -337,6 +337,7 @@ int mapping_find_inodes(mapping_t *mapping) {
       bool newfd_changed = mapping->fdstat.st_dev != st.st_dev || mapping->fdstat.st_ino != st.st_ino;
 
       if(newfd_changed || mapping_preserve_has_changes(mapping->preserve)) {
+        if(mapping->fd) close(mapping->fd);
         mapping->fd = newfd;
         memcpy(&mapping->fdstat, &st, sizeof(struct stat));
         printf("[PID %d] :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",
