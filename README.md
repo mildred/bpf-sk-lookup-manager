@@ -98,15 +98,17 @@ Run
 Work in progress. Run as root:
 
     cat /sys/kernel/debug/tracing/trace_pipe &
-    src/sk_lookup_manager -t 5555=0.0.0.0:22 -t 5555=[::]:22
+    src/sk_lookup_manager -t 5555=0.0.0.0:22 -t 5555=[::]:22 -t 5556=0.0.0.0:22
 
 Run a server to check:
 
     nc -l 5555
+    nc -l 127.0.0.2 5556
 
 Connect to port 5555, you are redirected to your SSH server:
 
     nc ::1 5555
+    nc 127.0.0.2 5556
 
 - Restart sshd then retry `nc ::1 5555`, it should have detected new socket.
 

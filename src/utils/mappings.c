@@ -64,10 +64,16 @@ int mapping_parse_add_any(mapping_t **in_mapping, int family, int proto, const c
 int mapping_find_inodes(mapping_t *mapping) {
   int err = 0;
   int fd = 0;
+  int newfd = 0;
+  char addr[1024];
 
   for(;mapping; mapping = mapping->next) {
 
+    mapping_preserve_mark_removed_and_remove(&mapping->preserve);
+
     //printf("family=%d (%d,%d,%d), protocol=%d (%d,%d)\n", mapping->family, AF_UNSPEC, AF_INET, AF_INET6, mapping->protocol, IPPROTO_TCP, IPPROTO_UDP);
+
+    int v4_len = 0, v6_len = 0;
 
     long buf[8192 / sizeof(long)];
     struct sockaddr_nl nladdr = {
@@ -243,6 +249,11 @@ int mapping_find_inodes(mapping_t *mapping) {
               mapping->inode = diag->idiag_inode;
               get_ip_str((struct sockaddr*) &src, addr1, 1024);
               get_ip_str(mapping->to_addr->ai_addr, addr2, 1024);
+            } else if (ntohs(src.sin_port) == mapping->from_port) {
+              if(mapping_preserve_add_or_find(&mapping->preserve, (struct sockaddr*) &src)) {
+                printf("Preserve %s\n", get_ip_str((struct sockaddr*) &src, addr1, 1024));
+              }
+              v4_len++;
             }
             break;
           }
@@ -276,6 +287,11 @@ int mapping_find_inodes(mapping_t *mapping) {
               mapping->inode = diag->idiag_inode;
               get_ip_str((struct sockaddr*) &src, addr1, 1024);
               get_ip_str(mapping->to_addr->ai_addr, addr2, 1024);
+            } else if (ntohs(src.sin6_port) == mapping->from_port) {
+              if(mapping_preserve_add_or_find(&mapping->preserve, (struct sockaddr*) &src)) {
+                printf("Preserve %s\n", get_ip_str((struct sockaddr*) &src, addr1, 1024));
+              }
+              v6_len++;
             }
             break;
           }
@@ -288,36 +304,59 @@ int mapping_find_inodes(mapping_t *mapping) {
         //printf("Found inode=%ld\n", mapping->inode);
 
         if(mapping->inode) {
-          int newfd = sock_pid_fd_from_inode(mapping->inode, &mapping->pid, &mapping->pid_fd);
+          memcpy(addr, addr1, 1024);
+          newfd = sock_pid_fd_from_inode(mapping->inode, &mapping->pid, &mapping->pid_fd);
           if(newfd < 0) {
             fprintf(stderr, "Cannot fetch inode(%ld): %s (%s)\n",  mapping->inode, strerror(-newfd), strerror(errno));
             err = (newfd == -EINVAL) ? EAGAIN : -newfd;
             goto cleanup;
           }
-          // Compare with fstat the old and new fd to see if it changed
-
-          struct stat st;
-          if(fstat(newfd, &st) < 0) {
-            fprintf(stderr, "Cannot fstat inode(%ld) fd %d: %s\n", mapping->inode, newfd, strerror(errno));
-            err = errno;
-            goto cleanup;
-          }
-          if(mapping->fdstat.st_dev != st.st_dev || mapping->fdstat.st_ino != st.st_ino) {
-            mapping->fd = newfd;
-            memcpy(&mapping->fdstat, &st, sizeof(struct stat));
-            printf("[PID %d] :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",
-                mapping->pid, mapping->from_port, addr1, mapping->pid, mapping->pid_fd, mapping->inode, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
-            //printf("Found in PID=%d, fd=%d -> %d (%ld:%ld))\n", mapping->pid, mapping->pid_fd, mapping->fd, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
-          } else {
-            close(newfd);
-          }
         }
       }
     }
+
+    // Cleanup mapping
+    // mapping->preserve_changed |= mapping_preserve_remove_not_found(&mapping->preserve);
+    mapping->preserve_changed = mapping_preserve_has_changes(mapping->preserve);
+
+    char addr0[1024];
+    for(mapping_preserve_t *p = mapping->preserve; p; p = p->next){
+      if(p->removed) {
+        printf("Stop preserving %s\n", get_ip_str((struct sockaddr*) p->bind_addr, addr0, 1024));
+      }
+    }
+
+    if(newfd) {
+      bool need_newfd = (mapping->family == AF_INET6) ? v6_len > mapping->preserve6_size :
+                        (mapping->family == AF_INET)  ? v4_len > mapping->preserve4_size : false;
+
+      // Compare with fstat the old and new fd to see if it changed
+      struct stat st;
+      if(fstat(newfd, &st) < 0) {
+        fprintf(stderr, "Cannot fstat inode(%ld) fd %d: %s\n", mapping->inode, newfd, strerror(errno));
+        err = errno;
+        goto cleanup;
+      }
+
+      bool newfd_changed = mapping->fdstat.st_dev != st.st_dev || mapping->fdstat.st_ino != st.st_ino;
+
+      if(need_newfd || newfd_changed || mapping->preserve_changed) {
+        mapping->fd = newfd;
+        memcpy(&mapping->fdstat, &st, sizeof(struct stat));
+        printf("[PID %d] :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",
+            mapping->pid, mapping->from_port, addr, mapping->pid, mapping->pid_fd, mapping->inode, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
+        //printf("Found in PID=%d, fd=%d -> %d (%ld:%ld))\n", mapping->pid, mapping->pid_fd, mapping->fd, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
+      } else {
+        close(newfd);
+      }
+      newfd = 0;
+    }
+
     err = 0;
   }
 
 cleanup:
+  if(newfd) close(newfd);
   if(fd) close(fd);
   return -err;
 }
@@ -326,7 +365,103 @@ void mapping_free(mapping_t *map) {
   while(map) {
     mapping_t *next_map = map->next;
     freeaddrinfo(map->to_addr);
+    mapping_preserve_free(map->preserve);
     free(map);
     map = next_map;
   }
+}
+
+void mapping_preserve_free(mapping_preserve_t *p) {
+  while(p) {
+    mapping_preserve_t *next = p->next;
+    sockaddr_free(p->bind_addr);
+    free(p);
+    p = next;
+  }
+}
+
+void mapping_preserve_mark_not_found(mapping_preserve_t *p) {
+  while(p) {
+    p->found = false;
+    p = p->next;
+  }
+}
+
+void mapping_preserve_mark_removed_and_remove(mapping_preserve_t **p) {
+  while(*p) {
+    if((*p)->removed) {
+      mapping_preserve_t *next = (*p)->next;
+      free(*p);
+      *p = next;
+    } else {
+      (*p)->added   = false;
+      (*p)->removed = true;
+      (*p)->found   = false;
+      p = &(*p)->next;
+    }
+  }
+}
+
+int mapping_preserve_len(mapping_preserve_t *p, int *v4_len, int *v6_len) {
+  int res = 0;
+  if(v4_len) *v4_len = 0;
+  if(v6_len) *v6_len = 0;
+  while(p) {
+    res++;
+    switch(p->bind_addr->sa_family){
+      case AF_INET:
+        if(v4_len) (*v4_len)++;
+        break;
+      case AF_INET6:
+        if(v6_len) (*v6_len)++;
+        break;
+    }
+    p = p->next;
+  }
+  return res;
+}
+
+bool mapping_preserve_add_or_find(mapping_preserve_t **p, struct sockaddr *addr) {
+  while(*p) {
+    if(ip_eq(addr, (*p)->bind_addr)) {
+      (*p)->found = true;
+      (*p)->removed = false;
+      (*p)->added = false;
+      return false;
+    }
+    p = &(*p)->next;
+  }
+  *p = malloc(sizeof(mapping_preserve_t));
+  bzero(*p, sizeof(mapping_preserve_t));
+  (*p)->found = true;
+  (*p)->added = true;
+  (*p)->bind_addr = sockaddr_copy(addr);
+  return true;
+}
+
+bool mapping_preserve_remove_not_found(mapping_preserve_t **p) {
+  bool res = false;
+  while(*p) {
+    if(! (*p)->found) {
+      mapping_preserve_t *ptr = *p;
+      *p = (*p)->next;
+      free(ptr);
+      res = true;
+    } else {
+      (*p)->found = false;
+      p = &(*p)->next;
+    }
+  }
+  return res;
+}
+
+bool mapping_preserve_has_changes(mapping_preserve_t *p) {
+  //char addr[1024];
+  while(p) {
+    //if(p->added)   printf("+ %s preserved\n", get_ip_str((struct sockaddr*) p->bind_addr, addr, 1024));
+    //if(p->removed) printf("- %s preserved\n", get_ip_str((struct sockaddr*) p->bind_addr, addr, 1024));
+    if(p->added || p->removed) return true;
+    p = p->next;
+  }
+  return false;
 }

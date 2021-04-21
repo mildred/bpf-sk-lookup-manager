@@ -15,6 +15,20 @@ struct {
 	__type(value, __u64);
 } redir_map SEC(".maps");
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, __u32);
+	__type(value, __u8);
+} preserve_ipv4_map SEC(".maps");
+
+typedef struct { __u32 addr[4]; } ipv6_t;
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, ipv6_t);
+	__type(value, __u8);
+} preserve_ipv6_map SEC(".maps");
+
 int redirect_port = 0;
 int redirect_family = 0;
 int redirect_protocol = 0;
@@ -30,6 +44,27 @@ int redirect(struct bpf_sk_lookup *ctx)
 	if (ctx->local_port != redirect_port) return SK_PASS;
 	if (ctx->family != redirect_family) return SK_PASS;
 	if (ctx->protocol != redirect_protocol) return SK_PASS;
+
+	switch(ctx->family){
+		case AF_INET: {
+			__u32 key = ctx->local_ip4;
+			if(bpf_map_lookup_elem(&preserve_ipv4_map, &key)) {
+				return SK_PASS;
+			}
+			break;
+		}
+		case AF_INET6: {
+			ipv6_t key = {
+				.addr = { ctx->local_ip6[0], ctx->local_ip6[1], ctx->local_ip6[2],  ctx->local_ip6[3] }
+			};
+			if(bpf_map_lookup_elem(&preserve_ipv6_map, &key)) {
+				return SK_PASS;
+			}
+			break;
+		}
+		default:
+			return SK_PASS;
+	}
 
 	sk = bpf_map_lookup_elem(&redir_map, &KEY0);
 	if (!sk)

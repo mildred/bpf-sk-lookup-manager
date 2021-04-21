@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
 
 #include "ip_funcs.h"
 
@@ -138,4 +139,26 @@ bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct sockaddr
 
 bool ip_eq(const struct sockaddr *sa0, const struct sockaddr *sa1){
     return ip_eq_prefix(sa0, -1, sa1, -1);
+}
+
+struct sockaddr* sockaddr_copy(struct sockaddr* source) {
+    struct sockaddr* result = 0;
+
+    switch(source->sa_family) {
+        case AF_INET:
+            result = malloc(sizeof(struct sockaddr_in));
+            memcpy(result, source, sizeof(struct sockaddr_in));
+            return result;
+        case AF_INET6:
+            result = malloc(sizeof(struct sockaddr_in6));
+            memcpy(result, source, sizeof(struct sockaddr_in6));
+            return result;
+        default:
+            return 0;
+    }
+    return result;
+}
+
+void sockaddr_free(struct sockaddr* source) {
+    if(source) free(source);
 }
