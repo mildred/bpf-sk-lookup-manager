@@ -315,10 +315,6 @@ int mapping_find_inodes(mapping_t *mapping) {
       }
     }
 
-    // Cleanup mapping
-    // mapping->preserve_changed |= mapping_preserve_remove_not_found(&mapping->preserve);
-    mapping->preserve_changed = mapping_preserve_has_changes(mapping->preserve);
-
     char addr0[1024];
     for(mapping_preserve_t *p = mapping->preserve; p; p = p->next){
       if(p->removed) {
@@ -327,8 +323,8 @@ int mapping_find_inodes(mapping_t *mapping) {
     }
 
     if(newfd) {
-      bool need_newfd = (mapping->family == AF_INET6) ? v6_len > mapping->preserve6_size :
-                        (mapping->family == AF_INET)  ? v4_len > mapping->preserve4_size : false;
+      //bool need_newfd = (mapping->family == AF_INET6) ? v6_len > mapping->preserve6_size :
+      //                  (mapping->family == AF_INET)  ? v4_len > mapping->preserve4_size : false;
 
       // Compare with fstat the old and new fd to see if it changed
       struct stat st;
@@ -340,7 +336,7 @@ int mapping_find_inodes(mapping_t *mapping) {
 
       bool newfd_changed = mapping->fdstat.st_dev != st.st_dev || mapping->fdstat.st_ino != st.st_ino;
 
-      if(need_newfd || newfd_changed || mapping->preserve_changed) {
+      if(newfd_changed || mapping_preserve_has_changes(mapping->preserve)) {
         mapping->fd = newfd;
         memcpy(&mapping->fdstat, &st, sizeof(struct stat));
         printf("[PID %d] :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",

@@ -34,7 +34,6 @@ typedef struct mapping {
   int                           fd;
   struct stat                   fdstat;
   mapping_preserve_t           *preserve;
-  bool                          preserve_changed;
   struct sk_lookup_manager_bpf *skel;
   int                           preserve4_size;
   int                           preserve6_size;

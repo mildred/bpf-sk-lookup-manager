@@ -224,7 +224,6 @@ static int install_sk_lookup(mapping_t *map) {
 		// close map->fd to avoid holding it when not in use
 		close(map->fd);
 		map->fd = 0;
-		map->preserve_changed = false;
 
 		//close(map_fd);
 
@@ -237,13 +236,6 @@ static int install_sk_lookup(mapping_t *map) {
 		char addr1[1024];
 		get_ip_str(map->to_addr->ai_addr, addr1, 1024);
 		printf("Attached :%d to %s /proc/%d/fd/%d [%ld:%ld]\n", map->from_port, addr1, map->pid, map->pid_fd, map->fdstat.st_dev, map->fdstat.st_ino);
-	} else if (map->preserve_changed) {
-		err = fill_preserve_maps(map, false);
-		if(err) {
-			return err;
-		}
-
-		map->preserve_changed = false;
 	}
 
 	return 0;
