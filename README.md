@@ -90,7 +90,7 @@ Requirement
 Build
 -----
 
-    make -B
+    make
 
 Run
 ---
