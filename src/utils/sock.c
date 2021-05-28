@@ -116,7 +116,7 @@ int sock_pid_fd_from_inode(ino_t inode, pid_t *pid, int *fd) {
     *fd = sock_fd_from_inode_and_pid(inode, *pid);
     if(*fd > 0) {
       err = -get_pid_fd(*pid, *fd);
-      if(err <= 0) goto cleanup;
+      goto cleanup;
     }
   }
 

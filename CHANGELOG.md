@@ -10,6 +10,9 @@ Changes:
 - Fix bug that would leak file descriptors
 - Fix bug where netns is not checked when getting sockets from other processes.
   /proc/pid/ns/net should equal /proc/self/ns/net
+- Fix pidfd syscall errors not being detected and being retried indefinitely
+  causing loops on systems where the syscall is not available instead of
+  stopping with the error.
 
 v0.0.2
 ------
