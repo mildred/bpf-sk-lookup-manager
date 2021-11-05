@@ -89,9 +89,9 @@ netAddrIpv6(int prefix, struct in6_addr *addr) {
     }
     struct in6_addr res = {};
     for(int i = 0; i < 16; i++) {
-        res.s6_addr[i] = res.s6_addr[i] & netmask.s6_addr[i];
+        res.s6_addr[i] = addr->s6_addr[i] & netmask.s6_addr[i];
     }
-    return netmask;
+    return res;
 }
 
 bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct sockaddr *sa1, int prefix1){
@@ -131,6 +131,9 @@ bool ip_eq_prefix(const struct sockaddr *sa0, int prefix0, const struct sockaddr
             for(int i = 0; i < 16; ++i)
                 if (net_addr0.s6_addr[i] != net_addr1.s6_addr[i]) return false;
 
+            //printf("ip_eq_prefix(%s, %d, %s, %d) = true\n",
+            //    inet_ntop(AF_INET6, &net_addr0, straddr1, 1024), prefix0,
+            //    inet_ntop(AF_INET6, &net_addr1, straddr2, 1024), prefix1);
             return true;
         }
     }

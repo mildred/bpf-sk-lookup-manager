@@ -37,5 +37,10 @@ bool ip_eq(const struct sockaddr *sa0, const struct sockaddr *sa1);
 struct sockaddr* sockaddr_copy(struct sockaddr* source);
 void sockaddr_free(struct sockaddr* source);
 
+static inline const char *proto_to_string(int protocol) {
+  return protocol == IPPROTO_TCP ? "TCP" :
+         protocol == IPPROTO_UDP ? "UDP" : "unknown protocol";
+}
+
 #endif
 

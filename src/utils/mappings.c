@@ -66,8 +66,20 @@ int mapping_find_inodes(mapping_t *mapping) {
   int fd = 0;
   int newfd = 0;
   char addr[1024];
+  char mapping_addr[1024];
 
   for(;mapping; mapping = mapping->next) {
+
+    get_ip_str(mapping->to_addr->ai_addr, mapping_addr, 1024);
+    int header = 0;
+    #define print_header() \
+    if (!header) { \
+      printf("Find mapping for %s :%d -> %s\n", \
+        proto_to_string(mapping->protocol), \
+        mapping->from_port, \
+        mapping_addr); \
+      header = 1; \
+    }
 
     mapping_preserve_mark_removed_and_remove(&mapping->preserve);
 
@@ -251,7 +263,8 @@ int mapping_find_inodes(mapping_t *mapping) {
               get_ip_str(mapping->to_addr->ai_addr, addr2, 1024);
             } else if (ntohs(src.sin_port) == mapping->from_port) {
               if(mapping_preserve_add_or_find(&mapping->preserve, (struct sockaddr*) &src)) {
-                printf("Preserve %s\n", get_ip_str((struct sockaddr*) &src, addr1, 1024));
+                print_header();
+                printf("--> preserve %s\n", get_ip_str((struct sockaddr*) &src, addr1, 1024));
               }
               v4_len++;
             }
@@ -289,7 +302,8 @@ int mapping_find_inodes(mapping_t *mapping) {
               get_ip_str(mapping->to_addr->ai_addr, addr2, 1024);
             } else if (ntohs(src.sin6_port) == mapping->from_port) {
               if(mapping_preserve_add_or_find(&mapping->preserve, (struct sockaddr*) &src)) {
-                printf("Preserve %s\n", get_ip_str((struct sockaddr*) &src, addr1, 1024));
+                print_header();
+                printf("--> preserve %s\n", get_ip_str((struct sockaddr*) &src, addr1, 1024));
               }
               v6_len++;
             }
@@ -318,7 +332,8 @@ int mapping_find_inodes(mapping_t *mapping) {
     char addr0[1024];
     for(mapping_preserve_t *p = mapping->preserve; p; p = p->next){
       if(p->removed) {
-        printf("Stop preserving %s\n", get_ip_str((struct sockaddr*) p->bind_addr, addr0, 1024));
+        print_header();
+        printf("--> stop preserving %s\n", get_ip_str((struct sockaddr*) p->bind_addr, addr0, 1024));
       }
     }
 
@@ -340,8 +355,12 @@ int mapping_find_inodes(mapping_t *mapping) {
         if(mapping->fd) close(mapping->fd);
         mapping->fd = newfd;
         memcpy(&mapping->fdstat, &st, sizeof(struct stat));
-        printf("[PID %d] :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",
-            mapping->pid, mapping->from_port, addr, mapping->pid, mapping->pid_fd, mapping->inode, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
+        print_header();
+        printf("==> [PID %d] %s :%d -> %s => /proc/%d/fd/%d -> socket:[%ld] [%ld:%ld]\n",
+            mapping->pid, proto_to_string(mapping->protocol), mapping->from_port,
+            addr,
+            mapping->pid, mapping->pid_fd,
+            mapping->inode, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
         //printf("Found in PID=%d, fd=%d -> %d (%ld:%ld))\n", mapping->pid, mapping->pid_fd, mapping->fd, mapping->fdstat.st_dev, mapping->fdstat.st_ino);
       } else {
         close(newfd);
@@ -350,6 +369,9 @@ int mapping_find_inodes(mapping_t *mapping) {
     }
 
     err = 0;
+
+    if(header) printf("\n");
+#undef print_header
   }
 
 cleanup:
