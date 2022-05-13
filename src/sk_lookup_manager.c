@@ -18,6 +18,8 @@ typedef struct { __u32 addr[4]; } ipv6_t;
 
 #include "sk_lookup_manager.skel.h"
 
+#define BPF_PRESERVE_MAP_FACTOR 2
+
 static struct bpf_link *attach_lookup_prog(struct bpf_program *prog)
 {
 	struct bpf_link *link;
@@ -65,19 +67,26 @@ static int resize_preserve_maps(mapping_t* map) {
 
 	mapping_preserve_len(map->preserve, &map->preserve4_size, &map->preserve6_size);
 
+	int cap4 = map->preserve4_size * BPF_PRESERVE_MAP_FACTOR || 1;
+	int cap6 = map->preserve6_size * BPF_PRESERVE_MAP_FACTOR || 1;
+	if(cap4 > map->preserve4_kernel_cap) map->preserve4_kernel_cap = cap4;
+	if(cap6 > map->preserve6_kernel_cap) map->preserve6_kernel_cap = cap6;
+	map->preserve4_kernel_size = 0;
+	map->preserve6_kernel_size = 0;
+
 	switch(map->family){
 		case AF_INET:   map->preserve6_size = 0; break;
 		case AF_INET6:  map->preserve4_size = 0; break;
 	}
 
-	err = -bpf_map__resize(map->skel->maps.preserve_ipv4_map, map->preserve4_size || 1);
+	err = -bpf_map__resize(map->skel->maps.preserve_ipv4_map, map->preserve4_kernel_cap);
 	if(err) {
-		fprintf(stderr, "Failed to resize preserve_ipv4_map to %d: %s\n", map->preserve4_size, strerror(err));
+		fprintf(stderr, "Failed to resize preserve_ipv4_map to %d: %s\n", map->preserve4_kernel_cap, strerror(err));
 		goto cleanup;
 	}
-	err = -bpf_map__resize(map->skel->maps.preserve_ipv6_map, map->preserve6_size || 1);
+	err = -bpf_map__resize(map->skel->maps.preserve_ipv6_map, map->preserve6_kernel_cap);
 	if(err) {
-		fprintf(stderr, "Failed to resize preserve_ipv6_map to %d, %s\n", map->preserve6_size, strerror(err));
+		fprintf(stderr, "Failed to resize preserve_ipv6_map to %d, %s\n", map->preserve6_kernel_cap, strerror(err));
 		goto cleanup;
 	}
 
@@ -119,13 +128,25 @@ static int fill_preserve_maps(mapping_t* map, bool is_new) {
 		switch(preserve->bind_addr->sa_family) {
 			case AF_INET: {
 				__u32 map_index = ((struct sockaddr_in*) preserve->bind_addr)->sin_addr.s_addr;
-				err = bpf_map_delete_elem(fd4, &map_index);
+				err = -bpf_map_delete_elem(fd4, &map_index);
+				if (!err) map->preserve4_kernel_size--;
+				if (err) {
+					fprintf(stderr, "Failed to remove IPv4 from BPF preserve map (%d/%d) fd=%d: %s\n",
+							map->preserve4_kernel_size, map->preserve4_kernel_cap,
+							fd4, strerror(err));
+				}
 				break;
 			}
 			case AF_INET6: {
 				ipv6_t map_index;
 				memcpy(map_index.addr, ((struct sockaddr_in6*) preserve->bind_addr)->sin6_addr.s6_addr, 16);
-				err = bpf_map_delete_elem(fd6, &map_index);
+				err = -bpf_map_delete_elem(fd6, &map_index);
+				if (!err) map->preserve6_kernel_size--;
+				if (err) {
+					fprintf(stderr, "Failed to remove IPv6 from BPF preserve map (%d/%d) fd=%d: %s\n",
+							map->preserve6_kernel_size, map->preserve6_kernel_cap,
+							fd6, strerror(err));
+				}
 				break;
 			}
 		}
@@ -144,9 +165,11 @@ static int fill_preserve_maps(mapping_t* map, bool is_new) {
 			case AF_INET: {
 				__u32 map_index = ((struct sockaddr_in*) preserve->bind_addr)->sin_addr.s_addr;
 				err = -bpf_map_update_elem(fd4, &map_index, &map_value, BPF_NOEXIST);
+				if (!err) map->preserve4_kernel_size++;
 				if (err) {
-					err = errno;
-					fprintf(stderr, "Failed to put preserve IPv4 to BPF map %d: %s\n", fd4, strerror(err));
+					fprintf(stderr, "Failed to put preserve IPv4 to BPF map (%d/%d) fd=%d: %s\n",
+							map->preserve4_kernel_size, map->preserve4_kernel_cap,
+							fd4, strerror(err));
 					goto cleanup;
 				}
 				break;
@@ -155,8 +178,11 @@ static int fill_preserve_maps(mapping_t* map, bool is_new) {
 				ipv6_t map_index;
 				memcpy(map_index.addr, ((struct sockaddr_in6*) preserve->bind_addr)->sin6_addr.s6_addr, 16);
 				err = -bpf_map_update_elem(fd6, &map_index, &map_value, BPF_NOEXIST);
+				if (!err) map->preserve6_kernel_size++;
 				if (err) {
-					fprintf(stderr, "Failed to put preserve IPv6 to BPF map %d: %s\n", fd6, strerror(err));
+					fprintf(stderr, "Failed to put preserve IPv6 to BPF map (%d/%d) fd=%d: %s\n",
+							map->preserve6_kernel_size, map->preserve6_kernel_cap,
+							fd6, strerror(err));
 					goto cleanup;
 				}
 				break;
@@ -244,6 +270,8 @@ static int install_sk_lookup(mapping_t *map) {
 int main(int argc, char **argv){
 	int verbose = 0;
 	int err = 0;
+	int p4capmin = 8;
+	int p6capmin = 8;
 	mapping_t *mapping = 0;
 
 	for(int argi = 1; argi < argc; argi++) {
@@ -264,6 +292,15 @@ int main(int argc, char **argv){
 				"        -v              verbose messages\n"
 				"        -t PORT=ADDR    redirect TCP port to ADDR\n"
 				"        -u PORT=ADDR    redirect UDP port to ADDR\n"
+				"        --p4cap SIZE    set preserve IPv4 map size to at least SIZE\n"
+				"        --p6cap SIZE    set preserve IPv6 map size to at least SIZE\n"
+				"\n"
+				"The --p4cap and --p6cap change the preserve map size for the previously\n"
+				"defined mapping. If specified at the beginning of the argument list,\n"
+				"they change the map size for all mappings.\n"
+				"Preserve maps is a BPF object that is created for each mapping and that\n"
+				"allows already listening sockets to continue receiving packets. They\n"
+				"cannot be increased at runtime.\n"
 				"\n"
 				"Examples:\n"
 				"        -t 2222=0.0.0.0:22 -t 2222=[::]:22 redirects every incoming\n"
@@ -289,6 +326,8 @@ int main(int argc, char **argv){
 				fprintf(stderr, "Cannot parse -t %s: %s\n", argv[argi+1], strerror(-err));
 				exit(EXIT_FAILURE);
 			}
+			mapping->preserve4_kernel_cap = p4capmin;
+			mapping->preserve6_kernel_cap = p6capmin;
 			argi++;
 
 		} else if(!strcmp("-u", argv[argi]) && argi + 1 < argc) {
@@ -298,6 +337,17 @@ int main(int argc, char **argv){
 				fprintf(stderr, "Cannot parse -u %s: %s\n", argv[argi+1], strerror(-err));
 				exit(EXIT_FAILURE);
 			}
+			mapping->preserve4_kernel_cap = p4capmin;
+			mapping->preserve6_kernel_cap = p6capmin;
+
+		} else if(!strcmp("--p4cap", argv[argi]) && argi + 1 < argc) {
+			if(mapping) mapping->preserve4_kernel_cap = atoi(argv[argi+1]);
+			else p4capmin = atoi(argv[argi+1]);
+			argi++;
+		} else if(!strcmp("--p6cap", argv[argi]) && argi + 1 < argc) {
+			if(mapping) mapping->preserve6_kernel_cap = atoi(argv[argi+1]);
+			else p6capmin = atoi(argv[argi+1]);
+			argi++;
 		}
 	}
 

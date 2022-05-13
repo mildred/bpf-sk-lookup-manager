@@ -37,6 +37,10 @@ typedef struct mapping {
   struct sk_lookup_manager_bpf *skel;
   int                           preserve4_size;
   int                           preserve6_size;
+  int                           preserve4_kernel_cap;
+  int                           preserve6_kernel_cap;
+  int                           preserve4_kernel_size;
+  int                           preserve6_kernel_size;
   struct bpf_link              *link;
   struct mapping               *next;
 } mapping_t;
