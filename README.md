@@ -1,3 +1,8 @@
+NOT MAINTAINED
+==============
+
+Please use https://github.com/cloudflare/tubular/ which uses exactly the same tricks... See their blog post: https://blog.cloudflare.com/tubular-fixing-the-socket-api-with-ebpf/
+
 bpf-inet-lookup-manager
 =======================
 
